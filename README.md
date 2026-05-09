@@ -282,14 +282,6 @@ Tap any entry to view complete maintenance history for that flat.
 
 ---
 
-# 📸 Screenshots
-
-<img width="1980" height="1080" alt="1" src="https://github.com/user-attachments/assets/81303f06-503d-4886-9dc7-3ea622b9baea" />
-
-<img width="1980" height="1080" alt="2" src="https://github.com/user-attachments/assets/52d707f0-ca85-4813-8404-badf181de81e" />
-
----
-
 # 🚀 Getting Started
 
 ## Prerequisites
