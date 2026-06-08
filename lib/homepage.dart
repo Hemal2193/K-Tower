@@ -33,13 +33,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadEntries();
+    // Load local data instantly, then sync in background
+    _loadLocalThenSync();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _loadEntries();
+      _loadLocalThenSync();
     }
   }
 
@@ -59,6 +60,66 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return cleaned;
   }
 
+  /// Loads local entries instantly (no network), then syncs in the background.
+  Future<void> _loadLocalThenSync() async {
+    try {
+      // Phase 1: Show local data IMMEDIATELY — no network calls
+      final localEntries = await EntrySyncService.loadLocalEntries();
+      final pendingSyncKeys = await SyncQueueService.getPendingSaveLocalKeys();
+
+      if (!mounted) return;
+
+      setState(() {
+        _entries = localEntries;
+        _filteredEntries = localEntries;
+        _pendingSyncKeys = pendingSyncKeys;
+        _isLoading = false;
+      });
+
+      // Phase 2: Process sync queue + cloud restore in background
+      // This no longer blocks the UI from showing data
+      _syncInBackground();
+    } catch (e) {
+      // If local loading fails (unlikely), fall back to the full load
+      _loadEntries();
+    }
+  }
+
+  /// Performs network-dependent operations in the background
+  /// without showing a loading spinner.
+  Future<void> _syncInBackground() async {
+    try {
+      final queueResult = await SyncQueueService.processQueue();
+      final result = await EntrySyncService.loadEntries();
+
+      if (!mounted) return;
+
+      setState(() {
+        _entries = result.entries;
+        _filteredEntries = result.entries;
+        _pendingSyncKeys = <dynamic>{};
+        // Keep _isLoading = false — we never re-show the spinner
+      });
+
+      if (result.restoredFromCloud && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Entries restored from Cloud.')),
+        );
+      } else if (queueResult.syncedCount > 0 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Synced ${queueResult.syncedCount} pending change${queueResult.syncedCount == 1 ? '' : 's'}.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      // Silently swallow background errors — the user already sees local data
+    }
+  }
+
+  // Keep the original _loadEntries for fallback and pull-to-refresh
   Future<void> _loadEntries() async {
     setState(() {
       _isLoading = true;
@@ -163,7 +224,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       MaterialPageRoute(builder: (context) => EntryPage(entryToEdit: entry)),
     ).then((result) {
       if (result == true) {
-        _loadEntries();
+        _loadLocalThenSync();
       }
     });
   }
@@ -240,7 +301,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
 
-      _loadEntries();
+      _loadLocalThenSync();
     } catch (e) {
       if (!mounted) {
         return;
@@ -254,11 +315,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Future<void> _shareEntry(EntryModel entry) async {
     try {
-      setState(() {
-        _isLoading = true;
-      });
-
       final pdfFile = await _pdfService.generateEntryPdf(entry);
+
+      if (!mounted) return;
 
       Navigator.push(
         context,
@@ -271,13 +330,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error generating PDF: $e')));
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
 
@@ -290,7 +346,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             builder: (context) => const EntryPage(),
           ),
         ).then((_) {
-          _loadEntries();
+          _loadLocalThenSync();
         });
       },
       onMonthlyInvoice: () {

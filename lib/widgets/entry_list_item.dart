@@ -66,7 +66,7 @@ class EntryListItem extends StatelessWidget {
                 child: const Text(
                   'Edited',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 8,
                     fontWeight: FontWeight.w600,
                     color: Colors.orange,
                   ),

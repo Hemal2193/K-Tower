@@ -26,6 +26,13 @@ class EntrySyncService {
     return userId;
   }
 
+  /// Load entries from local Hive storage only. No network calls.
+  /// This is instant and should be used to show cached data immediately.
+  static Future<List<EntryModel>> loadLocalEntries() async {
+    final box = await Hive.openBox<EntryModel>(entriesBoxName);
+    return box.values.toList();
+  }
+
   static Future<EntryModel> saveEntry(EntryModel entry) async {
     final userId = _requireUserId();
 
